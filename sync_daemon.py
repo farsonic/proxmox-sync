@@ -5,9 +5,9 @@ import warnings
 import time
 import sys
 import urllib3
+import os # Import the os module to access environment variables
 
 # Suppress InsecureRequestWarning: Unverified HTTPS request is being made
-# This is useful for environments with self-signed certificates.
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
 
@@ -16,7 +16,6 @@ urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 def load_config():
     """Loads settings from the config.json file."""
     try:
-        # The script is expected to be in the same directory as the config
         with open('config.json', 'r') as file:
             return json.load(file)
     except FileNotFoundError:
@@ -33,9 +32,15 @@ config = load_config()
 
 def get_afc_token(session):
     afc_config = config['AFC']
+    # Read password from environment variable
+    afc_password = os.environ.get('AFC_PASSWORD')
+    if not afc_password:
+        print("[ERROR] AFC_PASSWORD environment variable not set.")
+        return None
+
     req_timeout = config['Daemon']['request_timeout']
     auth_url = f"https://{afc_config['host']}/api/v1/auth/token"
-    auth_headers = {'X-Auth-Username': afc_config['user'], 'X-Auth-Password': afc_config['password']}
+    auth_headers = {'X-Auth-Username': afc_config['user'], 'X-Auth-Password': afc_password}
     try:
         response = session.post(auth_url, headers=auth_headers, verify=False, timeout=req_timeout)
         response.raise_for_status()
@@ -167,21 +172,21 @@ def delete_afc_vlan(session, token, fabric_uuid, fabric_name, vlan_uuid, vlan_na
 # --- PSM API Functions ---
 
 def login_to_psm(session):
-    """
-    Logs into PSM using the provided session object.
-    The session object will automatically store and reuse the cookie.
-    """
     psm_config = config['PSM']
+    # Read password from environment variable
+    psm_password = os.environ.get('PSM_PASSWORD')
+    if not psm_password:
+        print("[ERROR] PSM_PASSWORD environment variable not set.")
+        return False
+
     req_timeout = config['Daemon']['request_timeout']
     url = f"https://{psm_config['host']}/v1/login"
-    credentials = {"username": psm_config['user'], "password": psm_config['password'], "tenant": "default"}
+    credentials = {"username": psm_config['user'], "password": psm_password, "tenant": "default"}
     headers = {"Content-Type": "application/json"}
     print("--> Attempting to log into PSM...")
     try:
-        # The session object will store the cookie from the response for future requests
         response = session.post(url, headers=headers, json=credentials, verify=False, timeout=req_timeout)
         response.raise_for_status()
-        # Check if the response actually contains session data, indicating success
         if 'Set-Cookie' in response.headers:
             print("    SUCCESS: Logged into PSM and session cookie received.")
             return True
@@ -192,6 +197,7 @@ def login_to_psm(session):
         print(f"    [ERROR] PSM Login failed: {e}")
         return False
 
+# ... (rest of PSM functions are unchanged) ...
 def get_psm_vrfs(session):
     req_timeout = config['Daemon']['request_timeout']
     url = f"https://{config['PSM']['host']}/configs/network/v1/tenant/default/virtualrouters"
@@ -200,7 +206,6 @@ def get_psm_vrfs(session):
     try:
         response = session.get(url, headers=headers, verify=False, timeout=req_timeout)
         response.raise_for_status()
-        # Safely handle a null 'items' key by defaulting to an empty list
         vrfs_data = response.json().get('items') or []
         return {vrf.get('meta', {}).get('name') for vrf in vrfs_data if vrf.get('meta', {}).get('name')}
     except requests.exceptions.RequestException as e:
@@ -245,7 +250,6 @@ def get_psm_vlans(session):
     try:
         response = session.get(url, headers=headers, verify=False, timeout=req_timeout)
         response.raise_for_status()
-        # Safely handle a null 'items' key by defaulting to an empty list. This handles initial empty configurations.
         networks_data = response.json().get('items') or []
         psm_vlans = {}
         for network in networks_data:
@@ -297,19 +301,30 @@ def delete_psm_vlan(session, vlan_name):
 def get_proxmox_state():
     """Gets Proxmox SDN state using a read-only API token."""
     prox_config = config['Proxmox']
+    # Read token secret from environment variable
+    pve_token_secret = os.environ.get('PVE_TOKEN_SECRET_READ')
+    if not pve_token_secret:
+        print("[ERROR] PVE_TOKEN_SECRET_READ environment variable not set.")
+        return None, None
+
     req_timeout = config['Daemon']['request_timeout']
     zones_url = f"https://{prox_config['host']}:8006/api2/json/cluster/sdn/zones"
     vnets_url = f"https://{prox_config['host']}:8006/api2/json/cluster/sdn/vnets"
-    headers = {'Authorization': f"PVEAPIToken={prox_config['api_user_read']}!{prox_config['token_name_read']}={prox_config['token_secret_read']}"}
+    headers = {'Authorization': f"PVEAPIToken={prox_config['api_user_read']}!{prox_config['token_name_read']}={pve_token_secret}"}
     try:
+        print("--> Getting Proxmox SDN state...")
         zones_response = requests.get(zones_url, headers=headers, verify=False, timeout=req_timeout)
+        print(f"    Proxmox zones response status: {zones_response.status_code}")
         zones_response.raise_for_status()
         zones_data = zones_response.json().get('data', [])
+        print(f"    Found {len(zones_data)} zones in Proxmox.")
         proxmox_zones = {z['zone'] for z in zones_data if z.get('zone')}
 
         vnets_response = requests.get(vnets_url, headers=headers, verify=False, timeout=req_timeout)
+        print(f"    Proxmox vnets response status: {vnets_response.status_code}")
         vnets_response.raise_for_status()
         vnets_data = vnets_response.json().get('data', [])
+        print(f"    Found {len(vnets_data)} vnets in Proxmox.")
         proxmox_vnets = {}
         for v in vnets_data:
             if v.get('tag'):
@@ -329,8 +344,7 @@ def main():
     MASTER_OF_RECORD = config['Daemon']['master_of_record']
     POLL_INTERVAL_SECONDS = config['Daemon']['poll_interval_seconds']
     RESERVED_ZONE_NAMES = set(config['Daemon']['reserved_zone_names'])
-    
-    # Handle 'BOTH' as a list of targets
+
     vrf_sync_target = config['Daemon'].get('vrf_sync_target', 'AFC').upper()
     vlan_sync_target = config['Daemon'].get('vlan_sync_target', 'AFC').upper()
     VRF_SYNC_TARGETS = ['AFC', 'PSM'] if vrf_sync_target == 'BOTH' else [vrf_sync_target]
@@ -345,22 +359,19 @@ def main():
     afc_session = requests.Session()
     psm_session = requests.Session()
     psm_logged_in = False
-    
+
     try:
         while True:
             print("\n" + "="*50)
             print(f"Starting sync cycle at {time.ctime()}...")
 
-            # --- Step 1: Authenticate and Get State (once per cycle) ---
-
-            # Get AFC token for this cycle if AFC is a target.
+            # ... (rest of main loop is unchanged) ...
             afc_token = get_afc_token(afc_session) if 'AFC' in VRF_SYNC_TARGETS or 'AFC' in VLAN_SYNC_TARGETS else None
             if ('AFC' in VRF_SYNC_TARGETS or 'AFC' in VLAN_SYNC_TARGETS) and not afc_token:
                 print("[SKIP] AFC authentication failed. Skipping cycle.")
                 time.sleep(POLL_INTERVAL_SECONDS)
                 continue
 
-            # Login to PSM if not already logged in and if PSM is a target.
             if ('PSM' in VRF_SYNC_TARGETS or 'PSM' in VLAN_SYNC_TARGETS) and not psm_logged_in:
                 psm_logged_in = login_to_psm(psm_session)
                 if not psm_logged_in:
@@ -368,10 +379,8 @@ def main():
                     time.sleep(POLL_INTERVAL_SECONDS)
                     continue
 
-            # Get fabric UUIDs if needed for AFC
             fabric_uuids_map = lookup_fabric_uuids(afc_session, afc_token) if afc_token else {}
 
-            # Get desired state from Master of Record
             if MASTER_OF_RECORD == 'Proxmox':
                 desired_zones, desired_vnets = get_proxmox_state()
                 if desired_zones is None:
@@ -382,10 +391,8 @@ def main():
                 print(f"[FATAL] MASTER_OF_RECORD '{MASTER_OF_RECORD}' not implemented.")
                 sys.exit(1)
 
-            # --- Step 2: Reconcile DELETIONS (VLANs first, then VRFs) ---
             print("\n[INFO] Reconciling DELETIONS...")
 
-            # VLAN Deletions
             if 'PSM' in VLAN_SYNC_TARGETS:
                 current_psm_vlans = get_psm_vlans(psm_session)
                 if current_psm_vlans is not None:
@@ -393,7 +400,7 @@ def main():
                     vlans_to_delete = set(current_psm_vlans.keys()) - psm_desired_vlan_ids
                     for vlan_id in sorted(list(vlans_to_delete)):
                         delete_psm_vlan(psm_session, current_psm_vlans[vlan_id]['name'])
-            
+
             if 'AFC' in VLAN_SYNC_TARGETS and afc_token:
                 for fabric_name, fabric_uuid in fabric_uuids_map.items():
                     current_afc_vlans = get_afc_vlans(afc_session, afc_token, fabric_uuid)
@@ -403,7 +410,6 @@ def main():
                             details = current_afc_vlans[vlan_id]
                             delete_afc_vlan(afc_session, afc_token, fabric_uuid, fabric_name, details['uuid'], details['name'])
 
-            # VRF Deletions
             if 'PSM' in VRF_SYNC_TARGETS:
                 current_psm_vrfs = get_psm_vrfs(psm_session)
                 if current_psm_vrfs is not None:
@@ -421,10 +427,8 @@ def main():
                             if name in RESERVED_ZONE_NAMES: continue
                             delete_afc_vrf(afc_session, afc_token, current_afc_vrfs[name]['uuid'], name, fabric_name)
 
-            # --- Step 3: Reconcile CREATIONS (VRFs first, then VLANs) ---
             print("\n[INFO] Reconciling CREATIONS...")
 
-            # VRF Creations
             if 'PSM' in VRF_SYNC_TARGETS:
                 current_psm_vrfs = get_psm_vrfs(psm_session)
                 if current_psm_vrfs is not None:
@@ -432,7 +436,7 @@ def main():
                     for name in sorted(list(vrfs_to_create)):
                         if name in RESERVED_ZONE_NAMES: continue
                         create_psm_vrf(psm_session, name)
-            
+
             if 'AFC' in VRF_SYNC_TARGETS and afc_token:
                 for fabric_name, fabric_uuid in fabric_uuids_map.items():
                     current_afc_vrfs = get_afc_vrfs(afc_session, afc_token, fabric_uuid)
@@ -442,7 +446,6 @@ def main():
                             if name in RESERVED_ZONE_NAMES: continue
                             create_afc_vrf(afc_session, afc_token, name, fabric_uuid, fabric_name)
 
-            # VLAN Creations
             if 'PSM' in VLAN_SYNC_TARGETS:
                 current_psm_vlans = get_psm_vlans(psm_session)
                 if current_psm_vlans is not None:
@@ -468,7 +471,6 @@ def main():
     except KeyboardInterrupt:
         print("\n--- Stopping Sync Daemon ---")
     finally:
-        # Cleanly close the persistent sessions
         afc_session.close()
         psm_session.close()
         print("--- Sessions closed. Exiting. ---")
