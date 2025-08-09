@@ -19,6 +19,8 @@ This is an automation tool that makes changes to your network infrastructure. Us
 
 # Prerequisites
 
+You need to have a functional PSM and optionally an AFC server for this to be deployed. 
+
 * Before running the installer, ensure you have the following:
   Administrative Access: Root or sudo access to the Proxmox host where you will run the daemon. This is required for the installer to create the necessary user, role, and API token within Proxmox.
 * Python 3 & Pip: Python 3 should be installed by default on Proxmox. The installer will ensure the requests library is installed via apt.
