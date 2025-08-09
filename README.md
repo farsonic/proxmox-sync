@@ -44,7 +44,7 @@ bash ./install.sh
 ```
 
 The installer will guide you through the following steps:
-*  Install necessary software dependencies.*
+*  Install necessary software dependencies.
 *  Automatically create a dedicated, low-privilege Proxmox user (sync-daemon@pve) and an API token.
 *  Prompt you for API credentials for your target systems (PSM, AFC).
 *  Create a secure environment file for passwords and a config.json for other settings.
