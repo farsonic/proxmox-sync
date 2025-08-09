@@ -2,12 +2,12 @@
 # Proxmox SDN Sync Daemon
 This project provides a Python daemon to synchronize network configurations (VRFs/Zones and VLANs/Vnets) from a Proxmox VE cluster to other network controllers. It is designed to run as a systemd service directly on a Proxmox host. The primary goal is to use Proxmox as the single source of truth for network definitions, and have those definitions automatically pushed to other systems.
 
-#Supported Sync Targets:
+# Supported Sync Targets:
 
 * Pensando PSM: Pushes Proxmox Zones as Virtual Routers and Vnets as Networks.
 * Aruba Fabric Composer (AFC): Pushes Proxmox Zones as VRFs and Vnets as VLANs.
 
-#Prerequisites
+# Prerequisites
 
 1. Before running the installer, ensure you have the following:
 Administrative Access: Root or sudo access to the Proxmox host where you will run the daemon. This is required for the installer to create the necessary user, role, and API token within Proxmox.
