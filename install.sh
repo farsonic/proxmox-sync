@@ -110,8 +110,8 @@ read -sp "Enter AFC Password: " AFC_PASSWORD; echo
 read -p "Enter AFC Fabric Names (comma-separated, e.g., DC1,DC2): " AFC_FABRIC_NAMES
 
 # Daemon Settings
-read -p "Enter Sync Poll Interval in seconds [15]: " POLL_INTERVAL
-POLL_INTERVAL=${POLL_INTERVAL:-15}
+read -p "Enter Sync Poll Interval in seconds [60]: " POLL_INTERVAL
+POLL_INTERVAL=${POLL_INTERVAL:-60}
 read -p "Enable Dry Run Mode (no changes will be made)? [y/N]: " DRY_RUN_INPUT
 DRY_RUN=$([[ "$DRY_RUN_INPUT" =~ ^[yY](es)?$ ]] && echo "true" || echo "false")
 
