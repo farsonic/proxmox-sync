@@ -11,13 +11,18 @@ This project provides a Python daemon to synchronize network configurations (VRF
 
 1. Before running the installer, ensure you have the following:
 Administrative Access: Root or sudo access to the Proxmox host where you will run the daemon. This is required for the installer to create the necessary user, role, and API token within Proxmox.
-Python 3 & Pip: Python 3 should be installed by default on Proxmox. The installer will ensure the requests library is installed via apt.
-API Credentials for Target Systems:
-Pensando PSM: A user and password with permissions to create/delete Virtual Routers and Networks.
-Aruba AFC: A user and password with permissions to create/delete VRFs and VLANs.
-Installation
+2. Python 3 & Pip: Python 3 should be installed by default on Proxmox. The installer will ensure the requests library is installed via apt.
+3. API Credentials for Target Systems:
+* Pensando PSM: A user and password with permissions to create/delete Virtual Routers and Networks.
+* Aruba AFC: A user and password with permissions to create/delete VRFs and VLANs.
+
+# Installation
+
 To install the daemon, clone this repository or download the files to your Proxmox host. Then, make the installer executable and run it.
+
+```
 # Example: Clone from GitHub
+
 git clone [https://github.com/farsonic/proxmox-sync-daemon.git](https://github.com/farsonic/proxmox-sync-daemon.git)
 cd proxmox-sync-daemon
 
@@ -26,6 +31,7 @@ chmod +x install.sh
 
 # Run the installer with sudo
 sudo ./install.sh
+```
 
 The installer will guide you through the following steps:
 Install necessary software dependencies.
