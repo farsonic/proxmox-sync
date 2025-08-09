@@ -9,6 +9,7 @@ SERVICE_NAME="proxmox-sync-daemon"
 SERVICE_FILE="/etc/systemd/system/${SERVICE_NAME}.service"
 PVE_USER="sync-daemon@pve"
 PVE_ROLE="SDNSync"
+PVE_TOKEN_NAME="daemon-token"
 
 # --- Helper Functions ---
 function print_info() {
@@ -64,24 +65,32 @@ else
 fi
 
 # --- Step 3: Optionally Remove Proxmox Credentials ---
-read -p "Do you want to remove the Proxmox user (${PVE_USER}) and role (${PVE_ROLE})? [y/N]: " REMOVE_CREDS
+read -p "Do you want to remove the Proxmox user (${PVE_USER}), role (${PVE_ROLE}), and token? [y/N]: " REMOVE_CREDS
 if [[ "$REMOVE_CREDS" =~ ^[yY](es)?$ ]]; then
-    print_info "Removing Proxmox user and role..."
-    
-    # The token is part of the user, so it gets deleted with the user
+    print_info "Removing Proxmox credentials..."
+
+    # Explicitly delete the token first.
+    if pveum user token delete "$PVE_USER" "$PVE_TOKEN_NAME" &>/dev/null; then
+        print_success "Token '${PVE_TOKEN_NAME}' for user '${PVE_USER}' removed."
+    else
+        print_info "Token not found for user '${PVE_USER}', skipping."
+    fi
+
+    # Then delete the user.
     if pveum user delete "$PVE_USER" &>/dev/null; then
         print_success "User '${PVE_USER}' removed."
     else
-        print_info "User '${PVE_USER}' not found or could not be removed."
+        print_info "User '${PVE_USER}' not found, skipping."
     fi
 
+    # Finally, delete the role.
     if pveum role delete "$PVE_ROLE" &>/dev/null; then
         print_success "Role '${PVE_ROLE}' removed."
     else
-        print_info "Role '${PVE_ROLE}' not found or could not be removed."
+        print_info "Role '${PVE_ROLE}' not found, skipping."
     fi
 else
-    print_info "Skipping removal of Proxmox user and role."
+    print_info "Skipping removal of Proxmox user, role, and token."
 fi
 
 print_success "Uninstallation complete!"
