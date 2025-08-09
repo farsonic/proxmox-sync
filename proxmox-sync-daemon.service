@@ -1,0 +1,26 @@
+[Unit]
+Description=Proxmox SDN Sync Daemon
+# This ensures the service starts after the network is fully up.
+After=network-online.target
+
+[Service]
+# The full path to the python interpreter and the script
+ExecStart=/usr/bin/python3 /opt/proxmox-sync-daemon/sync_daemon.py
+
+# The script will run from this directory, so it can find config.json
+WorkingDirectory=/opt/proxmox-sync-daemon
+
+# Automatically restart the service if it fails
+Restart=on-failure
+RestartSec=5
+
+# The user the service will run as
+User=root
+
+# Redirect stdout and stderr to the systemd journal
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+# This enables the service to start at boot
+WantedBy=multi-user.target
