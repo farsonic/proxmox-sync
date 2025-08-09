@@ -33,14 +33,14 @@ To install the daemon, clone this repository or download the files to your Proxm
 ```
 # Example: Clone from GitHub
 
-git clone [https://github.com/farsonic/proxmox-sync-daemon.git](https://github.com/farsonic/proxmox-sync-daemon.git)
+git clone https://github.com/farsonic/proxmox-sync
 cd proxmox-sync-daemon
 
 # Make the installer executable
 chmod +x install.sh
 
 # Run the installer with sudo
-sudo ./install.sh
+bash ./install.sh
 ```
 
 The installer will guide you through the following steps:
