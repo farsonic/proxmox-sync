@@ -34,49 +34,60 @@ sudo ./install.sh
 ```
 
 The installer will guide you through the following steps:
-Install necessary software dependencies.
-Automatically create a dedicated, low-privilege Proxmox user (sync-daemon@pve) and an API token.
-Prompt you for API credentials for your target systems (PSM, AFC).
-Create a secure environment file for passwords and a config.json for other settings.
-Create a systemd service to run the script as a daemon.
-Start and enable the service.
-Automated Proxmox Credential Creation
+*  Install necessary software dependencies.*
+*  Automatically create a dedicated, low-privilege Proxmox user (sync-daemon@pve) and an API token.
+*  Prompt you for API credentials for your target systems (PSM, AFC).
+*  Create a secure environment file for passwords and a config.json for other settings.
+*  Create a systemd service to run the script as a daemon.
+*  Start and enable the service.
+
+# Automated Proxmox Credential Creation
+
 The installer automates the creation of a secure, read-only user for the daemon. It creates:
-User: sync-daemon@pve with the built-in PVEAuditor role.
-API Token: A dedicated token for this user with privilege separation disabled to ensure it inherits the correct permissions.
+* User: sync-daemon@pve with the built-in PVEAuditor role.
+* API Token: A dedicated token for this user with privilege separation disabled to ensure it inherits the correct permissions.
+
 This ensures the daemon runs with the minimum permissions required.
-Managing the Daemon
+
+# Managing the Daemon
+
 Once installed, you can manage the daemon using standard systemctl commands.
-Check the status of the service:
-systemctl status proxmox-sync-daemon
+
+* Check the status of the service:
+```systemctl status proxmox-sync-daemon```
 
 
-View the logs in real-time:
-journalctl -u proxmox-sync-daemon -f
+* View the logs in real-time:
+```journalctl -u proxmox-sync-daemon -f```
 
 
-Stop the service:
-systemctl stop proxmox-sync-daemon
+* Stop the service:
+```systemctl stop proxmox-sync-daemon```
 
 
-Start the service:
-systemctl start proxmox-sync-daemon
+* Start the service:
+```systemctl start proxmox-sync-daemon```
 
 
-Restart the service (e.g., after changing the config):
-systemctl restart proxmox-sync-daemon
+* Restart the service (e.g., after changing the config):
+```systemctl restart proxmox-sync-daemon```
 
 
-Uninstallation
+# Uninstallation
+
 To completely remove the daemon from your system, run the uninstall.sh script.
+```
 # Make the uninstaller executable
 chmod +x uninstall.sh
 
 # Run the uninstaller with sudo
 sudo ./uninstall.sh
+```
 
 The script will stop the service and remove all related files. It will also prompt you if you wish to remove the sync-daemon@pve user and its API token from Proxmox.
-Configuration
-The main configuration is stored in /opt/proxmox-sync-daemon/config.json. Passwords and secrets are stored separately in /opt/proxmox-sync-daemon/.env. If you need to change any settings after installation, you can edit these files and then restart the service.
+
+# Configuration
+
+The main configuration is stored in ```/opt/proxmox-sync-daemon/config.json``` Passwords and secrets are stored separately in ```/opt/proxmox-sync-daemon/.env``` If you need to change any settings after installation, you can edit these files and then restart the service.
 
 
