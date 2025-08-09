@@ -1,0 +1,15 @@
+Proxmox SDN Sync DaemonThis project provides a Python daemon to synchronize network configurations (VRFs/Zones and VLANs/Vnets) from a Proxmox VE cluster to other network controllers. It is designed to run as a systemd service directly on a Proxmox host.The primary goal is to use Proxmox as the single source of truth for network definitions, and have those definitions automatically pushed to other systems.Supported Sync Targets:Pensando PSM: Pushes Proxmox Zones as Virtual Routers and Vnets as Networks.Aruba Fabric Composer (AFC): Pushes Proxmox Zones as VRFs and Vnets as VLANs.PrerequisitesBefore running the installer, ensure you have the following:Administrative Access: Root or sudo access to the Proxmox host where you will run the daemon. This is required for the installer to create the necessary user, role, and API token within Proxmox.Python 3 & Pip: Python 3 should be installed by default on Proxmox. The installer will ensure pip and the requests library are installed.API Credentials for Target Systems:Pensando PSM: A user and password with permissions to create/delete Virtual Routers and Networks.Aruba AFC: A user and password with permissions to create/delete VRFs and VLANs.InstallationTo install the daemon, clone this repository or download the files to your Proxmox host. Then, make the installer executable and run it.# Example: Clone from GitHub
+# git clone [https://github.com/your-username/proxmox-sync-daemon.git](https://github.com/your-username/proxmox-sync-daemon.git)
+# cd proxmox-sync-daemon
+
+# Make the installer executable
+chmod +x install.sh
+
+# Run the installer with sudo
+sudo ./install.sh
+The installer will guide you through the following steps:Install necessary software dependencies (python3-pip, requests).Automatically create a dedicated, low-privilege Proxmox user (sync-daemon@pve), a role (SDNSync), and an API token. This is the recommended method.Prompt you for API credentials for your target systems (PSM, AFC).Create a config.json file with your settings.Create a systemd service to run the script as a daemon.Start and enable the service.Automated Proxmox Credential CreationThe installer automates the creation of a secure, read-only user for the daemon. It creates:Role: SDNSync with Sys.Audit and SDN.Audit permissions.User: sync-daemon@pveAPI Token: A dedicated token for this user.This ensures the daemon runs with the minimum permissions required.Managing the DaemonOnce installed, you can manage the daemon using standard systemctl commands.Check the status of the service:systemctl status proxmox-sync-daemon
+View the logs in real-time:journalctl -u proxmox-sync-daemon -f
+Stop the service:systemctl stop proxmox-sync-daemon
+Start the service:systemctl start proxmox-sync-daemon
+Restart the service (e.g., after changing the config):systemctl restart proxmox-sync-daemon
+ConfigurationThe configuration is stored in /opt/proxmox-sync-daemon/config.json. If you need to change any credentials or settings after installation, you can edit this file and then restart the service.
