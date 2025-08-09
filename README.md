@@ -19,10 +19,10 @@ This is an automation tool that makes changes to your network infrastructure. Us
 
 # Prerequisites
 
-1. Before running the installer, ensure you have the following:
-Administrative Access: Root or sudo access to the Proxmox host where you will run the daemon. This is required for the installer to create the necessary user, role, and API token within Proxmox.
-2. Python 3 & Pip: Python 3 should be installed by default on Proxmox. The installer will ensure the requests library is installed via apt.
-3. API Credentials for Target Systems:
+* Before running the installer, ensure you have the following:
+  Administrative Access: Root or sudo access to the Proxmox host where you will run the daemon. This is required for the installer to create the necessary user, role, and API token within Proxmox.
+* Python 3 & Pip: Python 3 should be installed by default on Proxmox. The installer will ensure the requests library is installed via apt.
+* API Credentials for Target Systems:
 * Pensando PSM: A user and password with permissions to create/delete Virtual Routers and Networks.
 * Aruba AFC: A user and password with permissions to create/delete VRFs and VLANs.
 
