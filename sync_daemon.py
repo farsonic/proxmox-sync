@@ -197,7 +197,6 @@ def login_to_psm(session):
         print(f"    [ERROR] PSM Login failed: {e}")
         return False
 
-# ... (rest of PSM functions are unchanged) ...
 def get_psm_vrfs(session):
     req_timeout = config['Daemon']['request_timeout']
     url = f"https://{config['PSM']['host']}/configs/network/v1/tenant/default/virtualrouters"
@@ -331,7 +330,8 @@ def get_proxmox_state():
                 proxmox_vnets[int(v['tag'])] = {
                     'vnet': v.get('vnet'),
                     'zone': v.get('zone'),
-                    'isolate': int(v.get('isolate-ports', 0))
+                    'isolate': int(v.get('isolate-ports', 0)),
+                    'orchestration': int(v.get('orchestration', 0))
                 }
         return proxmox_zones, proxmox_vnets
     except requests.exceptions.RequestException as e:
@@ -344,11 +344,16 @@ def main():
     MASTER_OF_RECORD = config['Daemon']['master_of_record']
     POLL_INTERVAL_SECONDS = config['Daemon']['poll_interval_seconds']
     RESERVED_ZONE_NAMES = set(config['Daemon']['reserved_zone_names'])
+    SYNC_ORCHESTRATED_ONLY = config['Daemon'].get('sync_orchestrated_vnets_only', False)
 
-    vrf_sync_target = config['Daemon'].get('vrf_sync_target', 'AFC').upper()
-    vlan_sync_target = config['Daemon'].get('vlan_sync_target', 'AFC').upper()
+    vrf_sync_target = config['Daemon'].get('vrf_sync_target', 'NONE').upper()
+    vlan_sync_target = config['Daemon'].get('vlan_sync_target', 'NONE').upper()
     VRF_SYNC_TARGETS = ['AFC', 'PSM'] if vrf_sync_target == 'BOTH' else [vrf_sync_target]
     VLAN_SYNC_TARGETS = ['AFC', 'PSM'] if vlan_sync_target == 'BOTH' else [vlan_sync_target]
+
+    # Check if targets are actually configured before trying to use them
+    psm_configured = 'PSM' in config and config['PSM'].get('host')
+    afc_configured = 'AFC' in config and config['AFC'].get('host')
 
     print(f"--- Starting Sync Daemon ---")
     print(f"--- MASTER OF RECORD: {MASTER_OF_RECORD} ---")
@@ -365,21 +370,25 @@ def main():
             print("\n" + "="*50)
             print(f"Starting sync cycle at {time.ctime()}...")
 
-            # ... (rest of main loop is unchanged) ...
-            afc_token = get_afc_token(afc_session) if 'AFC' in VRF_SYNC_TARGETS or 'AFC' in VLAN_SYNC_TARGETS else None
-            if ('AFC' in VRF_SYNC_TARGETS or 'AFC' in VLAN_SYNC_TARGETS) and not afc_token:
-                print("[SKIP] AFC authentication failed. Skipping cycle.")
-                time.sleep(POLL_INTERVAL_SECONDS)
-                continue
+            # --- Step 1: Authenticate and Get State ---
+            afc_token = None
+            if afc_configured and ('AFC' in VRF_SYNC_TARGETS or 'AFC' in VLAN_SYNC_TARGETS):
+                afc_token = get_afc_token(afc_session)
+                if not afc_token:
+                    print("[SKIP] AFC authentication failed. Skipping cycle.")
+                    time.sleep(POLL_INTERVAL_SECONDS)
+                    continue
 
-            if ('PSM' in VRF_SYNC_TARGETS or 'PSM' in VLAN_SYNC_TARGETS) and not psm_logged_in:
+            if psm_configured and ('PSM' in VRF_SYNC_TARGETS or 'PSM' in VLAN_SYNC_TARGETS) and not psm_logged_in:
                 psm_logged_in = login_to_psm(psm_session)
                 if not psm_logged_in:
                     print("[SKIP] PSM authentication failed. Skipping cycle.")
                     time.sleep(POLL_INTERVAL_SECONDS)
                     continue
 
-            fabric_uuids_map = lookup_fabric_uuids(afc_session, afc_token) if afc_token else {}
+            fabric_uuids_map = {}
+            if afc_token:
+                 fabric_uuids_map = lookup_fabric_uuids(afc_session, afc_token)
 
             if MASTER_OF_RECORD == 'Proxmox':
                 desired_zones, desired_vnets = get_proxmox_state()
@@ -387,13 +396,30 @@ def main():
                     print("[SKIP] Could not get state from Proxmox. Skipping cycle.")
                     time.sleep(POLL_INTERVAL_SECONDS)
                     continue
+
+                if SYNC_ORCHESTRATED_ONLY:
+                    print("[INFO] Filtering for VNETs with 'orchestration=1' flag enabled...")
+
+                    filtered_vnets = {
+                        tag: details for tag, details in desired_vnets.items()
+                        if details.get('orchestration') == 1
+                    }
+
+                    print(f"       Found {len(desired_vnets)} total VNETs, "
+                          f"{len(filtered_vnets)} selected for sync.")
+
+                    # Overwrite the original variable so the rest of the script
+                    # only sees the filtered list.
+                    desired_vnets = filtered_vnets
+
             else:
                 print(f"[FATAL] MASTER_OF_RECORD '{MASTER_OF_RECORD}' not implemented.")
                 sys.exit(1)
 
+            # --- Step 2: Reconcile DELETIONS ---
             print("\n[INFO] Reconciling DELETIONS...")
 
-            if 'PSM' in VLAN_SYNC_TARGETS:
+            if psm_configured and 'PSM' in VLAN_SYNC_TARGETS:
                 current_psm_vlans = get_psm_vlans(psm_session)
                 if current_psm_vlans is not None:
                     psm_desired_vlan_ids = {tag for tag, details in desired_vnets.items() if details.get('isolate') == 1}
@@ -401,7 +427,7 @@ def main():
                     for vlan_id in sorted(list(vlans_to_delete)):
                         delete_psm_vlan(psm_session, current_psm_vlans[vlan_id]['name'])
 
-            if 'AFC' in VLAN_SYNC_TARGETS and afc_token:
+            if afc_token and 'AFC' in VLAN_SYNC_TARGETS:
                 for fabric_name, fabric_uuid in fabric_uuids_map.items():
                     current_afc_vlans = get_afc_vlans(afc_session, afc_token, fabric_uuid)
                     if current_afc_vlans is not None:
@@ -410,7 +436,7 @@ def main():
                             details = current_afc_vlans[vlan_id]
                             delete_afc_vlan(afc_session, afc_token, fabric_uuid, fabric_name, details['uuid'], details['name'])
 
-            if 'PSM' in VRF_SYNC_TARGETS:
+            if psm_configured and 'PSM' in VRF_SYNC_TARGETS:
                 current_psm_vrfs = get_psm_vrfs(psm_session)
                 if current_psm_vrfs is not None:
                     vrfs_to_delete = current_psm_vrfs - desired_zones
@@ -418,7 +444,7 @@ def main():
                         if name in RESERVED_ZONE_NAMES: continue
                         delete_psm_vrf(psm_session, name)
 
-            if 'AFC' in VRF_SYNC_TARGETS and afc_token:
+            if afc_token and 'AFC' in VRF_SYNC_TARGETS:
                 for fabric_name, fabric_uuid in fabric_uuids_map.items():
                     current_afc_vrfs = get_afc_vrfs(afc_session, afc_token, fabric_uuid)
                     if current_afc_vrfs is not None:
@@ -427,9 +453,10 @@ def main():
                             if name in RESERVED_ZONE_NAMES: continue
                             delete_afc_vrf(afc_session, afc_token, current_afc_vrfs[name]['uuid'], name, fabric_name)
 
+            # --- Step 3: Reconcile CREATIONS ---
             print("\n[INFO] Reconciling CREATIONS...")
 
-            if 'PSM' in VRF_SYNC_TARGETS:
+            if psm_configured and 'PSM' in VRF_SYNC_TARGETS:
                 current_psm_vrfs = get_psm_vrfs(psm_session)
                 if current_psm_vrfs is not None:
                     vrfs_to_create = desired_zones - current_psm_vrfs
@@ -437,7 +464,7 @@ def main():
                         if name in RESERVED_ZONE_NAMES: continue
                         create_psm_vrf(psm_session, name)
 
-            if 'AFC' in VRF_SYNC_TARGETS and afc_token:
+            if afc_token and 'AFC' in VRF_SYNC_TARGETS:
                 for fabric_name, fabric_uuid in fabric_uuids_map.items():
                     current_afc_vrfs = get_afc_vrfs(afc_session, afc_token, fabric_uuid)
                     if current_afc_vrfs is not None:
@@ -446,7 +473,7 @@ def main():
                             if name in RESERVED_ZONE_NAMES: continue
                             create_afc_vrf(afc_session, afc_token, name, fabric_uuid, fabric_name)
 
-            if 'PSM' in VLAN_SYNC_TARGETS:
+            if psm_configured and 'PSM' in VLAN_SYNC_TARGETS:
                 current_psm_vlans = get_psm_vlans(psm_session)
                 if current_psm_vlans is not None:
                     psm_desired_vlan_ids = {tag for tag, details in desired_vnets.items() if details.get('isolate') == 1}
@@ -455,7 +482,7 @@ def main():
                         details = desired_vnets[vlan_id]
                         create_psm_vlan(psm_session, vlan_id, details['vnet'], details['zone'])
 
-            if 'AFC' in VLAN_SYNC_TARGETS and afc_token:
+            if afc_token and 'AFC' in VLAN_SYNC_TARGETS:
                 for fabric_name, fabric_uuid in fabric_uuids_map.items():
                     current_afc_vlans = get_afc_vlans(afc_session, afc_token, fabric_uuid)
                     if current_afc_vlans is not None:
