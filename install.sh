@@ -98,20 +98,58 @@ else
     create_proxmox_credentials
 fi
 
-# PSM Details
-read -p "Enter PSM host (IP or FQDN): " PSM_HOST
-read -p "Enter PSM Username: " PSM_USER
-read -sp "Enter PSM Password: " PSM_PASSWORD; echo
+# Target Configuration
+read -p "Configure Pensando PSM as a target? [Y/n]: " CONFIGURE_PSM
+CONFIGURE_PSM=${CONFIGURE_PSM:-Y}
+read -p "Configure Aruba Fabric Composer (AFC) as a target? [y/N]: " CONFIGURE_AFC
+CONFIGURE_AFC=${CONFIGURE_AFC:-N}
 
-# AFC Details
-read -p "Enter AFC host (IP or FQDN): " AFC_HOST
-read -p "Enter AFC Username: " AFC_USER
-read -sp "Enter AFC Password: " AFC_PASSWORD; echo
-read -p "Enter AFC Fabric Names (comma-separated, e.g., DC1,DC2): " AFC_FABRIC_NAMES
+if [[ ! "$CONFIGURE_PSM" =~ ^[yY](es)?$ ]] && [[ ! "$CONFIGURE_AFC" =~ ^[yY](es)?$ ]]; then
+    print_error "You must configure at least one target (PSM or AFC). Aborting."
+fi
+
+PSM_HOST=""
+PSM_USER=""
+PSM_PASSWORD=""
+if [[ "$CONFIGURE_PSM" =~ ^[yY](es)?$ ]]; then
+    print_info "--- PSM Configuration ---"
+    read -p "Enter PSM host (IP or FQDN): " PSM_HOST
+    read -p "Enter PSM Username: " PSM_USER
+    read -sp "Enter PSM Password: " PSM_PASSWORD; echo
+fi
+
+AFC_HOST=""
+AFC_USER=""
+AFC_PASSWORD=""
+AFC_FABRIC_NAMES=""
+if [[ "$CONFIGURE_AFC" =~ ^[yY](es)?$ ]]; then
+    print_info "--- AFC Configuration ---"
+    read -p "Enter AFC host (IP or FQDN): " AFC_HOST
+    read -p "Enter AFC Username: " AFC_USER
+    read -sp "Enter AFC Password: " AFC_PASSWORD; echo
+    read -p "Enter AFC Fabric Names (comma-separated, e.g., DC1,DC2): " AFC_FABRIC_NAMES
+fi
+
+# --- Determine Sync Targets based on user selection ---
+VRF_TARGET="NONE"
+VLAN_TARGET="NONE"
+if [[ "$CONFIGURE_AFC" =~ ^[yY](es)?$ ]]; then
+    # If AFC is available, it becomes the primary for VRFs, and VLANs sync to both
+    VRF_TARGET="AFC"
+    VLAN_TARGET="BOTH"
+elif [[ "$CONFIGURE_PSM" =~ ^[yY](es)?$ ]]; then
+    # If only PSM is available, it is the target for both
+    VRF_TARGET="PSM"
+    VLAN_TARGET="PSM"
+fi
 
 # Daemon Settings
-read -p "Enter Sync Poll Interval in seconds [60]: " POLL_INTERVAL
-POLL_INTERVAL=${POLL_INTERVAL:-60}
+read -p "Enter Sync Poll Interval in seconds [15]: " POLL_INTERVAL
+POLL_INTERVAL=${POLL_INTERVAL:-15}
+
+read -p "Only sync VNETs with the 'orchestration' flag set? (Recommended) [Y/n]: " SYNC_ORCHESTRATED_INPUT
+SYNC_ORCHESTRATED=$([[ "$SYNC_ORCHESTRATED_INPUT" =~ ^[nN](o)?$ ]] && echo "false" || echo "true")
+
 read -p "Enable Dry Run Mode (no changes will be made)? [y/N]: " DRY_RUN_INPUT
 DRY_RUN=$([[ "$DRY_RUN_INPUT" =~ ^[yY](es)?$ ]] && echo "true" || echo "false")
 
@@ -150,11 +188,12 @@ cat > "${INSTALL_DIR}/${CONFIG_NAME}" << EOF
   },
   "Daemon": {
     "master_of_record": "Proxmox",
-    "vrf_sync_target": "AFC",
-    "vlan_sync_target": "BOTH",
+    "vrf_sync_target": "${VRF_TARGET}",
+    "vlan_sync_target": "${VLAN_TARGET}",
     "poll_interval_seconds": ${POLL_INTERVAL},
     "request_timeout": 10,
     "dry_run": ${DRY_RUN},
+    "sync_orchestrated_vnets_only": ${SYNC_ORCHESTRATED},
     "reserved_zone_names": [
       "default",
       "mgmt"
